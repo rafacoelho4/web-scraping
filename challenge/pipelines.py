@@ -43,7 +43,7 @@ class ProductPipeline:
         specs = adapter.get('specs')
         if specs: 
             for key, value in specs.items():
-                if(key == 'voltage'): continue 
+                if(key == 'voltage' or value == ''): continue 
                 numbers = re.findall("[-+]?[.]?[\d]+(?:,\d\d\d)*[\.]?\d*(?:[eE][-+]?\d+)?", value)
                 # numbers = re.findall(r'\d+', value)
                 adapter['specs'][key] = numbers[0] 

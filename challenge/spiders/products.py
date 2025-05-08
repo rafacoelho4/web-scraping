@@ -23,8 +23,9 @@ class ProductsSpider(scrapy.Spider):
     }
 
     def parse(self, response, **kwargs):
-        PAGE_SIZE = 20
-        url = f"https://www.baldor.com/api/products?include=results&language=en-US&include=filters&include=category&pageSize={PAGE_SIZE}&category=4"
+        PAGE_SIZE = 200
+        CATEGORY = 4
+        url = f"https://www.baldor.com/api/products?include=results&language=en-US&include=filters&include=category&pageSize={PAGE_SIZE}&category={CATEGORY}"
         request = scrapy.Request(url, callback=self.parse_api, headers=self.headers)
 
         yield request 
@@ -32,6 +33,7 @@ class ProductsSpider(scrapy.Spider):
     def parse_api(self, response):
         raw_data = response.body
         data = json.loads(raw_data)
+        name = data['category']['longText']
 
         for product in data['results']['matches']:
 
@@ -64,6 +66,7 @@ class ProductsSpider(scrapy.Spider):
 
             item = {
                 "code": product_code,
+                "name": name,
                 "description": description,
                 "specs": {
                     "hp": output,
@@ -82,8 +85,12 @@ class ProductsSpider(scrapy.Spider):
         product = ProductItem()
 
         # manual 
-        infoPacket = response.css("#infoPacket::attr(href)").extract()[0]
-        infoPacket_url = "https://www.baldor.com" + infoPacket
+        infoPacket = response.css("#infoPacket::attr(href)").extract()
+        if infoPacket:
+            infoPacket = infoPacket[0]
+            infoPacket_url = "https://www.baldor.com" + infoPacket
+        else: 
+            infoPacket_url = ''
 
         # bom (bill of materials)
         tabs = response.css(".tab-content h2::text").getall()
@@ -105,12 +112,13 @@ class ProductsSpider(scrapy.Spider):
                 bom.append(part)
 
         product['code'] = item['code']
+        product['name'] = item['name']
         product['description'] = item['description']
         product['specs'] = item['specs']
         product['bom'] = bom
         assets = {
-            "image": item['image_urls'],
-            "manual": [infoPacket_url]
+            "image": item['image_urls']
+            # "manual": [infoPacket_url]
         }
         # product['assets'] = assets
         # product['image'] = item['image_urls']
@@ -128,13 +136,5 @@ class ProductsSpider(scrapy.Spider):
 # description:  response.css(".product-description::text").get()
 # image:        response.css(".product-image").getall() 
 # infoPacket:   response.css("#infoPacket").getall() 
-
-# tabs:
-# response.css(".tab-content h2::text").getall()
-# ['Specs', 'Drawings', 'Nameplate', 'Performance', 'Parts']
-
-# BOM (bill of materials): 
-# part number: response.css(".tab-content:last-child .key::text").getall() 
-# quantity: response.css(".tab-content:last-child .right::text").getall() 
 
 # images: https://www.baldor.com/api/images/201?bc=white&as=1&h=256&w=256

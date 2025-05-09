@@ -39,6 +39,9 @@ class ProductsSpider(scrapy.Spider):
 
             if(page_size == 0 or page_size > 500): continue 
 
+            # LIMITING THE SCRAPPING 
+            page_size = 5
+            
             url = f"https://www.baldor.com/api/products?include=results&language=en-US&include=filters&include=category&pageSize={page_size}&category={id}"
             request = scrapy.Request(url, callback=self.parse_api, headers=self.headers)
 

@@ -13,11 +13,23 @@ import os
 from scrapy.pipelines.images import ImagesPipeline
 from scrapy.pipelines.files import FilesPipeline
 
+# Replaces multiple spaces with a single space, keeping slashes intact 
+def clean_string_with_slashes(input_string):
+    cleaned_string = re.sub(r'[ ]+/', '/', input_string)  # Remove spaces before /
+    cleaned_string = re.sub(r'/[ ]+', '/', cleaned_string)  # Remove spaces after /
+    cleaned_string = re.sub(r'\s+', ' ', cleaned_string.strip())  # Normalize remaining spaces
+    return cleaned_string
+
+def extract_numbers(text):
+    match = re.search(r'\d+', text)  
+    return match.group() if match else None
+
 class customImagePipeline(ImagesPipeline):
     def file_path(self, request, response=None, info=None, *, item=None):
         product_id = item['product_id']
         return f'assets/{product_id}/img.jpg'
 
+    # Method is called once the image is downloaded 
     def item_completed(self, results, item, info):
         item['downloaded_images'] = {}
         for success, image_info in results:
@@ -30,6 +42,7 @@ class customFilePipeline(FilesPipeline):
         product_id = item['product_id']
         return f'assets/{product_id}/manual.pdf'
 
+    # Method is called once the file is downloaded 
     def item_completed(self, results, item, info):
         item['downloaded_files'] = {}
         for success, file_info in results:
@@ -37,59 +50,53 @@ class customFilePipeline(FilesPipeline):
                 item['downloaded_files']['manual'] = file_info['path']
         return item
 
-def clean_string_with_slashes(input_string):
-    # Replace multiple spaces (but protect slashes)
-    cleaned_string = re.sub(r'[ ]+/', '/', input_string)  # Remove spaces before /
-    cleaned_string = re.sub(r'/[ ]+', '/', cleaned_string)  # Remove spaces after /
-    cleaned_string = re.sub(r'\s+', ' ', cleaned_string.strip())  # Normalize remaining spaces
-    return cleaned_string
-
 class ProductPipeline: 
     def process_item(self, item, spider): 
         adapter = ItemAdapter(item) 
 
-        # bom quantity and description adapter (from '2.000 EA' to '2') 
+        # Cleaning up product descrption 
+        description = adapter.get('description') 
+        clean = clean_string_with_slashes(description)
+        adapter['description'] = clean
+
+        # Cleaning up BOM (Bill of Materials) 
         bom_list = adapter.get('bom') 
         if bom_list: 
             for index, material in enumerate(bom_list): 
                 for key, value in material.items(): 
                     if key == 'quantity' and value: 
-                        x = value.split('.') 
-                        adapter['bom'][index]['quantity'] = x[0] 
+                        quantity = value.split('.') 
+                        adapter['bom'][index]['quantity'] = quantity[0] 
                     if key == 'description' and value:
-                        # remove excess whitespace 
-                        cleaned = clean_string_with_slashes(value)
-                        adapter['bom'][index]['description'] = cleaned
-                    
+                        clean = clean_string_with_slashes(value)
+                        adapter['bom'][index]['description'] = clean
 
-        # specs adapater (from '2hp' to '2' and '1750rpm' to '1750') 
+        # Cleaning up Specifications 
         specs = adapter.get('specs')
         if specs: 
             for key, value in specs.items():
-                # if(key == 'voltage' or value == ''): continue 
-                if(value == ''): continue 
-                cleaned = re.sub(r'[^a-zA-Z0-9/]', '', value)
-                # numbers = re.findall("[-+]?[.]?[\d]+(?:,\d\d\d)*[\.]?\d*(?:[eE][-+]?\d+)?", value)
-                # numbers = re.findall(r'\d+', value)
-                # adapter['specs'][key] = numbers[0] 
-                adapter['specs'][key] = cleaned
+                if(key == 'voltage'): 
+                    clean = re.sub(r'[^0-9/]', '', value) 
+                elif(key == 'rpm'): 
+                    clean = extract_numbers(value) 
+                elif(key == 'frame'): 
+                    clean = re.sub(r'[^a-zA-Z0-9/]', '', value) 
+                elif(key == 'hp'): 
+                    clean = clean_string_with_slashes(value)
+                adapter['specs'][key] = clean
 
-        # assets 
+        # Building the assets dictionary 
         assets = {}
-        
-        # Add image only if downloaded
+
         if 'downloaded_images' in item and 'image' in item['downloaded_images']:
             assets['image'] = item['downloaded_images']['image']
-        
-        # Add manual only if downloaded
         if 'downloaded_files' in item and 'manual' in item['downloaded_files']:
             assets['manual'] = item['downloaded_files']['manual']
         
-        # Only add assets if we have at least one file
         if assets:
             item['assets'] = assets
         
-         # Clean up temporary and download fields
+        # Removing unnecessary fields 
         fields_to_remove = [
             'image_urls', 'images',
             'manual', 'files',

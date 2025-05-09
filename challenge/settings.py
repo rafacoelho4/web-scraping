@@ -61,26 +61,6 @@ FILES_RESULT_FIELD = "manual"
 
 PRODUCTS_OUTPUT_DIR = "output"
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # Disable Telnet Console (enabled by default)
 #TELNETCONSOLE_ENABLED = False
 

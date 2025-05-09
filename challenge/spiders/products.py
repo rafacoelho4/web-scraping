@@ -1,6 +1,5 @@
 import scrapy
 import json 
-import re 
 
 from challenge.items import ProductItem 
 
@@ -24,8 +23,8 @@ class ProductsSpider(scrapy.Spider):
     }
 
     def parse(self, response, **kwargs):
-        PAGE_SIZE = 5
-        CATEGORY = 5
+        PAGE_SIZE = 100
+        CATEGORY = 6
         url = f"https://www.baldor.com/api/products?include=results&language=en-US&include=filters&include=category&pageSize={PAGE_SIZE}&category={CATEGORY}"
         request = scrapy.Request(url, callback=self.parse_api, headers=self.headers)
 
@@ -116,10 +115,6 @@ class ProductsSpider(scrapy.Spider):
         product['manual'] = [infoPacket_url]
 
         yield product
-
-# product code: 
-# response.css("div.matches .overview h3 a::text").getall()
-# go to https://www.baldor.com/catalog/{product.code} for details 
 
 # inside product page: 
 # code:         response.css(".page-title h1::text").get() 

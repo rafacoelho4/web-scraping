@@ -23,13 +23,27 @@ class ProductsSpider(scrapy.Spider):
     }
 
     def parse(self, response, **kwargs):
-        PAGE_SIZE = 100
-        CATEGORY = 6
-        url = f"https://www.baldor.com/api/products?include=results&language=en-US&include=filters&include=category&pageSize={PAGE_SIZE}&category={CATEGORY}"
-        request = scrapy.Request(url, callback=self.parse_api, headers=self.headers)
 
-        yield request 
+        categories_url = "https://www.baldor.com/api/products?include=category" 
+        request = scrapy.Request(categories_url, callback=self.parse_categories, headers=self.headers)
+
+        yield request
             
+    def parse_categories(self, response):
+        raw_data = response.body
+        data = json.loads(raw_data)
+
+        for category in data['category']['children']:
+            id = category['id'] 
+            page_size = category['count'] 
+
+            if(page_size == 0 or page_size > 500): continue 
+
+            url = f"https://www.baldor.com/api/products?include=results&language=en-US&include=filters&include=category&pageSize={page_size}&category={id}"
+            request = scrapy.Request(url, callback=self.parse_api, headers=self.headers)
+
+            yield request
+
     def parse_api(self, response):
         raw_data = response.body
         data = json.loads(raw_data)
@@ -42,7 +56,6 @@ class ProductsSpider(scrapy.Spider):
             imageId = product['imageId']
 
             img_url = f"https://www.baldor.com/api/images/{imageId}?bc=white&as=1&h=256&w=256" 
-            # da pra fazer sem esses bg, sh, h, w 
 
             item = {
                 "code": product_code,
@@ -52,25 +65,27 @@ class ProductsSpider(scrapy.Spider):
             }
 
             product_url = f"https://www.baldor.com/catalog/{product_code}"
+
             yield response.follow(product_url, callback=self.parse_product_page, meta={'item': item})
 
     def parse_product_page(self, response, **kwargs):
         item = response.meta['item']
         product = ProductItem()
 
-        # manual 
+        # Manual  
         infoPacket = response.css("#infoPacket::attr(href)").extract()
         if infoPacket:
             infoPacket = infoPacket[0]
-            infoPacket_url = "https://www.baldor.com" + infoPacket
+            infoPacket_url = ["https://www.baldor.com" + infoPacket]
         else: 
-            infoPacket_url = ''
+            infoPacket_url = []
 
-        # tabs 
+        # Products's information is separated in different tabs 
         tabs = response.css(".tab-content h2::text").getall()
-        # bom (bill of materials)
+        # BOM (Bill Of Materials)
         bom = []
         if "Parts" in tabs:
+            # Lists all the parts of the product 
             rows = response.css('.pane[data-tab="parts"] tbody tr')
             for i, row in enumerate(rows):
                 p = rows[i].css('td::text').getall()
@@ -86,33 +101,37 @@ class ProductsSpider(scrapy.Spider):
 
                 bom.append(part)
         
-        # specs 
+        # Specifications  
         specs = {}
+        specs_fields = ['Frame', 'Base Speed', 'Field Voltage', 'Output Power']
         if "Specs" in tabs:
+            # Lists all the specifications of the product, with the first child being the label and the second child being the value 
             table_rows = response.css('.pane[data-tab="specs"] .product-overview .col div')
             if(table_rows):
                 for i, row in enumerate(table_rows):
                     label = row.css('span:first-child::text').get()
-                    if(label == 'Frame' or label == 'Base Speed' or label == 'Field Voltage' or label == 'Output Power'):
+                    if(label in specs_fields):
                         value = row.css('span:nth-child(2)::text').getall()
-                        if(len(value) > 1): single_value = "/".join(value)
-                        else: single_value = value[0]
+                        if(len(value) > 1): single_value = "/".join(value) # if there is more than one value, join with "/"
+                        else: single_value = value[0] # if there is only one value, use it 
 
                         if label and single_value:
                             specs[label] = single_value
 
+            # Changing the name of the keys  
             if 'Output Power' in specs: specs['hp'] = specs.pop('Output Power')
             if 'Field Voltage' in specs: specs['voltage'] = specs.pop('Field Voltage')
             if 'Base Speed' in specs: specs['rpm'] = specs.pop('Base Speed')
             if 'Frame' in specs: specs['frame'] = specs.pop('Frame')
 
+        # Filling out product fields 
         product['product_id'] = item['code']
         product['name'] = item['name']
         product['description'] = item['description']
         product['specs'] = specs
         product['bom'] = bom
         product['image_urls'] = item['image_urls']
-        product['manual'] = [infoPacket_url]
+        product['manual'] = infoPacket_url
 
         yield product
 

@@ -4,7 +4,8 @@ import os, sys
 def main():
     print("Hello World!")
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    execute(['scrapy','crawl','products','-o','product.json'])
+    execute(['scrapy','crawl','products'])
+    # execute(['scrapy','crawl','products','-o','product.json'])
 
 if __name__ == "__main__":
     main() 

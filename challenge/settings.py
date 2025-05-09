@@ -47,18 +47,19 @@ DOWNLOAD_TIMEOUT = 30
 ITEM_PIPELINES = {
     "challenge.pipelines.customImagePipeline": 1, 
     "challenge.pipelines.customFilePipeline": 1,
-    "challenge.pipelines.ProductPipeline": 100
-    # "challenge.pipelines.JsonWriterPipeline": 200
+    "challenge.pipelines.ProductPipeline": 100,
+    "challenge.pipelines.JsonWriterPipeline": 300
 }
-IMAGES_STORE = "img"
-IMAGES_URLS_FIELD = "image"
-IMAGES_RESULT_FIELD = "image"
+IMAGES_STORE = "output"
+IMAGES_URLS_FIELD = "image_urls"
+IMAGES_RESULT_FIELD = "image_results"
 
 # Files pipeline settings 
-FILES_STORE = "files"
+FILES_STORE = "output"
 FILES_URLS_FIELD = "manual"
 FILES_RESULT_FIELD = "manual"
 
+PRODUCTS_OUTPUT_DIR = "output"
 
 
 

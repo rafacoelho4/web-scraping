@@ -1,5 +1,6 @@
 import scrapy
 import json 
+import re 
 
 from challenge.items import ProductItem 
 
@@ -23,8 +24,8 @@ class ProductsSpider(scrapy.Spider):
     }
 
     def parse(self, response, **kwargs):
-        PAGE_SIZE = 200
-        CATEGORY = 4
+        PAGE_SIZE = 5
+        CATEGORY = 5
         url = f"https://www.baldor.com/api/products?include=results&language=en-US&include=filters&include=category&pageSize={PAGE_SIZE}&category={CATEGORY}"
         request = scrapy.Request(url, callback=self.parse_api, headers=self.headers)
 
@@ -41,46 +42,20 @@ class ProductsSpider(scrapy.Spider):
             description = product['description']
             imageId = product['imageId']
 
-            rpm = '' 
-            voltage = '' 
-            frame = '' 
-            output = '' 
             img_url = f"https://www.baldor.com/api/images/{imageId}?bc=white&as=1&h=256&w=256" 
             # da pra fazer sem esses bg, sh, h, w 
-
-            for attr in product['attributes']:
-                if attr['name'] == 'base_speed':
-                    rpm = attr['values'][0]['value']
-                elif attr['name'] == 'field_voltage':
-                    if len(attr['values']) == 1:
-                        voltage = attr['values'][0]['value']
-                    else:
-                        for volts in attr['values']:
-                            voltage += volts['value'] + '/'
-                        if(voltage[-1] == '/'):
-                            voltage = voltage[:-1]
-                elif attr['name'] == 'frame':
-                    frame = attr['values'][0]['value']
-                elif attr['name'] == 'output':
-                    output = attr['values'][0]['value']
 
             item = {
                 "code": product_code,
                 "name": name,
                 "description": description,
-                "specs": {
-                    "hp": output,
-                    "voltage": voltage,
-                    "rpm": rpm,
-                    "frame": frame
-                },
                 "image_urls": [img_url]
             }
 
             product_url = f"https://www.baldor.com/catalog/{product_code}"
-            yield response.follow(product_url, callback=self.parse_product, meta={'item': item})
+            yield response.follow(product_url, callback=self.parse_product_page, meta={'item': item})
 
-    def parse_product(self, response, **kwargs):
+    def parse_product_page(self, response, **kwargs):
         item = response.meta['item']
         product = ProductItem()
 
@@ -92,8 +67,9 @@ class ProductsSpider(scrapy.Spider):
         else: 
             infoPacket_url = ''
 
-        # bom (bill of materials)
+        # tabs 
         tabs = response.css(".tab-content h2::text").getall()
+        # bom (bill of materials)
         bom = []
         if "Parts" in tabs:
             rows = response.css('.pane[data-tab="parts"] tbody tr')
@@ -110,22 +86,36 @@ class ProductsSpider(scrapy.Spider):
                 }
 
                 bom.append(part)
+        
+        # specs 
+        specs = {}
+        if "Specs" in tabs:
+            table_rows = response.css('.pane[data-tab="specs"] .product-overview .col div')
+            if(table_rows):
+                for i, row in enumerate(table_rows):
+                    label = row.css('span:first-child::text').get()
+                    if(label == 'Frame' or label == 'Base Speed' or label == 'Field Voltage' or label == 'Output Power'):
+                        value = row.css('span:nth-child(2)::text').getall()
+                        if(len(value) > 1): single_value = "/".join(value)
+                        else: single_value = value[0]
 
-        product['code'] = item['code']
+                        if label and single_value:
+                            specs[label] = single_value
+
+            if 'Output Power' in specs: specs['hp'] = specs.pop('Output Power')
+            if 'Field Voltage' in specs: specs['voltage'] = specs.pop('Field Voltage')
+            if 'Base Speed' in specs: specs['rpm'] = specs.pop('Base Speed')
+            if 'Frame' in specs: specs['frame'] = specs.pop('Frame')
+
+        product['product_id'] = item['code']
         product['name'] = item['name']
         product['description'] = item['description']
-        product['specs'] = item['specs']
+        product['specs'] = specs
         product['bom'] = bom
-        assets = {
-            "image": item['image_urls']
-            # "manual": [infoPacket_url]
-        }
-        # product['assets'] = assets
-        # product['image'] = item['image_urls']
-        # product['manual'] = [infoPacket_url]
+        product['image_urls'] = item['image_urls']
+        product['manual'] = [infoPacket_url]
 
         yield product
-
 
 # product code: 
 # response.css("div.matches .overview h3 a::text").getall()
